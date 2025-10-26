@@ -1,0 +1,352 @@
+Now, let me create the prompt for JULES:
+Action: file_editor create /app/JULES_PROMPT.md --file-text "# 🤖 PROMPT FOR JULES - Flight Search Application Recreation
+
+Copy and paste this entire prompt to JULES to recreate the \"Voos Baratos SP\" flight search application:
+
+---
+
+## PROJECT REQUEST
+
+Create a comprehensive flight search web application called \"Voos Baratos SP\" that helps users find the cheapest international flights departing from São Paulo airports to global destinations. This should be a full-stack application with modern UI and real flight data integration.
+
+## TECHNICAL SPECIFICATIONS
+
+### Backend Requirements (FastAPI + Python)
+```python
+# Use FastAPI framework with the following structure:
+# - FastAPI with async/await patterns
+# - MongoDB integration using Motor (async driver)  
+# - Amadeus Flight Offers Search API integration
+# - Pydantic models for data validation
+# - CORS configuration for frontend communication
+# - ThreadPoolExecutor for API calls since Amadeus SDK is synchronous
+
+# Key Dependencies:
+fastapi==0.110.1
+uvicorn==0.25.0
+pymongo==4.5.0
+motor==3.3.1
+pydantic>=2.6.4
+amadeus>=12.0.0
+python-dotenv>=1.0.1
+axios
+```
+
+### Frontend Requirements (React)
+```javascript
+// Use React 19 with modern hooks and the following dependencies:
+\"react\": \"^19.0.0\"
+\"react-router-dom\": \"^7.5.1\" 
+\"axios\": \"^1.8.4\"
+\"tailwindcss\": \"^3.4.17\"
+
+// UI Components - Install Shadcn/UI components:
+// - Button, Card, Input, Label, Select, Dialog, Badge
+// - Switch, Tabs, Calendar components
+// - Use Radix UI primitives underneath
+
+// Maps - Install Leaflet for interactive maps:
+\"leaflet\": \"^1.9.4\"
+\"react-leaflet\": \"^5.0.0\"
+
+// Icons and styling:
+\"lucide-react\": \"^0.507.0\" // For all icons
+\"tailwind-merge\": \"^3.2.0\"
+```
+
+## CORE FEATURES TO IMPLEMENT
+
+### 1. Flight Search System
+- **Fixed Origin**: São Paulo airports (GRU/CGH/VCP)
+- **Global Destinations**: Accept IATA airport codes (JFK, LHR, CDG, etc.)
+- **Search Parameters**: 
+  - Destination (required)
+  - Departure date (required, future dates only)
+  - Return date (optional, for round trips)
+  - Passengers (1-9, default 1)
+  - Travel class (Economy/Premium/Business/First)
+  - Max price filter (optional)
+  - Direct flights only toggle
+
+### 2. Amadeus API Integration
+```python
+# Backend integration requirements:
+# 1. OAuth2 client credentials flow for authentication
+# 2. Flight Offers Search endpoint integration
+# 3. Handle multiple origin airports (GRU, CGH, VCP) in single search
+# 4. Error handling for rate limits and API failures
+# 5. Mock data fallback when API returns empty results
+
+# Environment variables needed:
+AMADEUS_CLIENT_ID=\"your_key_here\"
+AMADEUS_CLIENT_SECRET=\"your_secret_here\" 
+AMADEUS_HOSTNAME=\"test\"  # or \"production\"
+```
+
+### 3. Advanced UI Components
+
+#### SearchForm Component Features:
+- Modern form with Tailwind CSS styling
+- Quick destination buttons (JFK, LHR, CDG, MAD, LIS, FCO)
+- Calendar date pickers with validation
+- Advanced filters toggle (collapsible section)
+- Loading states during search
+- Form validation and error handling
+
+#### FlightResults Component Features:
+- Professional flight card layout showing:
+  - Airline name (full name, not just code)
+  - Flight number, aircraft type
+  - Departure/arrival times and airports
+  - Flight duration and number of stops
+  - Price in Brazilian Real (BRL) formatting
+  - Travel class indication
+- Sort by price (lowest first)
+- Responsive design for mobile/desktop
+
+#### Flight Details Modal:
+- Comprehensive flight information popup
+- Price breakdown (base fare + taxes + total)
+- Multiple booking options with different prices:
+  - Official airline websites (LATAM, Gol, Azul direct links)
+  - Travel agencies (Kayak, Expedia, Amadeus)
+  - \"Best price\" highlighting
+- Aircraft details, fare basis codes
+- Important travel notes (documentation, baggage)
+
+### 4. Interactive Global Map
+```javascript
+// Implement using React Leaflet:
+// - World map with OpenStreetMap tiles
+// - Color-coded price markers:
+//   - Green: Under R$ 3,000
+//   - Yellow: R$ 3,000 - R$ 4,000  
+//   - Red: Over R$ 4,000
+// - São Paulo marked as origin point
+// - Interactive popups with city info and prices
+// - Click markers to see flight details
+```
+
+### 5. UI/UX Design Requirements
+
+#### Design System:
+- **Colors**: Blue primary (#3b82f6), orange accent (#f97316)
+- **Typography**: Inter font family
+- **Layout**: Modern glass morphism effects
+- **Animations**: Smooth transitions, hover effects, loading states
+- **Responsive**: Works on desktop, tablet, mobile
+
+#### Component Styling:
+```css
+/* Key styling requirements: */
+/* Use Tailwind with custom animations */
+/* Glass morphism: backdrop-blur, rgba backgrounds */
+/* Gradient buttons with hover effects */
+/* Professional shadows and rounded corners */
+/* Proper spacing with 8px grid system */
+```
+
+### 6. API Endpoints Structure
+
+```python
+# Backend API endpoints to create:
+
+POST /api/search-flights
+# Request: {destination, departure_date, passengers, travel_class, etc.}
+# Response: {flights[], total_results, search_params, meta}
+
+GET /api/popular-destinations  
+# Response: {destinations[{iata, city, country, coordinates}]}
+
+GET /api/global-prices?departure_date=YYYY-MM-DD
+# Response: {price_points[{destination, min_price, coordinates}]}
+
+GET /api/airports
+# Response: {airports[{iata, name, city}]} for São Paulo airports
+
+GET /api/health
+# Response: {status, timestamp, services}
+```
+
+### 7. Data Models Structure
+
+```python
+# Pydantic models to implement:
+
+class FlightSearchRequest(BaseModel):
+    destination: str
+    departure_date: date  
+    return_date: Optional[date]
+    passengers: int = Field(ge=1, le=9)
+    travel_class: str = \"ECONOMY\"
+    max_price: Optional[int]
+    direct_flights: bool = False
+
+class FlightOffer(BaseModel):
+    id: str
+    airline_code: str
+    airline_name: str  # Full name like \"LATAM Airlines\"
+    flight_number: str
+    origin: str
+    destination: str
+    departure_time: str
+    arrival_time: str  
+    duration: str
+    price: float
+    currency: str
+    stops: int
+    travel_class: str
+    aircraft: Optional[str]
+    booking_options: List[BookingOption]
+    fare_details: Dict[str, Any]
+
+class BookingOption(BaseModel):
+    provider: str  # \"LATAM\", \"Kayak\", \"Expedia\", etc.
+    url: str
+    price: float
+    currency: str
+```
+
+## SPECIFIC IMPLEMENTATION DETAILS
+
+### 1. Airline Name Mapping
+```python
+# Create comprehensive airline mapping:
+AIRLINE_NAMES = {
+    'LA': 'LATAM Airlines',
+    'G3': 'Gol', 
+    'AD': 'Azul',
+    'AA': 'American Airlines',
+    'DL': 'Delta Air Lines',
+    'UA': 'United Airlines',
+    'BA': 'British Airways',
+    'LH': 'Lufthansa',
+    'AF': 'Air France',
+    'AV': 'Avianca',
+    'CM': 'Copa Airlines',
+    # Add more as needed
+}
+```
+
+### 2. Currency Formatting
+```javascript
+// All prices should display in Brazilian Real:
+const formatPrice = (price, currency = 'BRL') => {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: currency
+  }).format(price);
+};
+```
+
+### 3. Booking Options Generation
+```python
+# Generate multiple booking options per flight:
+def create_booking_options(airline_code, price, currency):
+    options = [
+        {
+            \"provider\": \"Amadeus\",
+            \"url\": f\"https://www.amadeus.com/booking?airline={airline_code}\",
+            \"price\": price,
+            \"currency\": currency
+        },
+        {
+            \"provider\": \"Kayak\", 
+            \"url\": f\"https://www.kayak.com.br/?airline={airline_code}\",
+            \"price\": price * 1.02,  # Slightly higher
+            \"currency\": currency
+        }
+    ]
+    
+    # Add airline-specific direct booking
+    if airline_code == 'LA':
+        options.append({
+            \"provider\": \"LATAM\",
+            \"url\": \"https://www.latam.com/pt_br/\",
+            \"price\": price * 0.98,  # Direct booking discount
+            \"currency\": currency
+        })
+    
+    return options
+```
+
+## ENVIRONMENT SETUP
+
+### Backend .env file:
+```env
+MONGO_URL=\"mongodb://localhost:27017\"
+DB_NAME=\"flight_search_db\"
+CORS_ORIGINS=\"*\"
+AMADEUS_CLIENT_ID=\"your_amadeus_client_id\"
+AMADEUS_CLIENT_SECRET=\"your_amadeus_client_secret\" 
+AMADEUS_HOSTNAME=\"test\"
+```
+
+### Frontend .env file:
+```env
+REACT_APP_BACKEND_URL=http://localhost:8001
+```
+
+## FILE STRUCTURE TO CREATE
+
+```
+flight-search-app/
+├── backend/
+│   ├── server.py              # Main FastAPI app
+│   ├── requirements.txt       # Python dependencies
+│   └── .env                   # Environment variables
+├── frontend/
+│   ├── public/               # Static assets
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ui/          # Shadcn components (Button, Card, etc.)
+│   │   │   ├── Header.js    # App header with branding
+│   │   │   ├── Hero.js      # Landing page hero section  
+│   │   │   ├── SearchForm.js # Main search form
+│   │   │   ├── FlightResults.js # Results display
+│   │   │   └── GlobalMap.js # Interactive map
+│   │   ├── App.js           # Main React component
+│   │   ├── App.css          # Global styles
+│   │   └── index.js         # React entry point
+│   ├── package.json         # Dependencies
+│   ├── tailwind.config.js   # Tailwind configuration
+│   └── .env                 # Frontend environment
+└── README.md               # Comprehensive documentation
+```
+
+## CRITICAL REQUIREMENTS
+
+1. **Real API Integration**: Must integrate with Amadeus Flight Offers Search API
+2. **Professional UI**: Modern, responsive design with smooth animations  
+3. **Multiple Airports**: Handle GRU, CGH, VCP airports in São Paulo
+4. **Complete Booking Flow**: From search to detailed flight info to booking options
+5. **Price Formatting**: All prices in Brazilian Real with proper formatting
+6. **Error Handling**: Graceful handling of API errors, empty results, validation
+7. **Performance**: Async operations, loading states, efficient rendering
+
+## TESTING REQUIREMENTS
+
+After implementation, the application should:
+- ✅ Search flights from São Paulo to JFK successfully
+- ✅ Display airline names (not just codes)
+- ✅ Show multiple booking options with prices
+- ✅ Open detailed flight modal when clicking \"Ver Detalhes\"
+- ✅ Display interactive map with price markers
+- ✅ Handle form validation and error states
+- ✅ Format prices in Brazilian Real
+- ✅ Work responsively on mobile and desktop
+
+## ADDITIONAL NOTES
+
+- Use modern React patterns (hooks, functional components)
+- Implement proper error boundaries
+- Add loading states for all async operations
+- Use TypeScript if possible for better type safety
+- Include comprehensive error handling
+- Make the UI accessible with proper ARIA labels
+- Optimize for performance with React.memo where appropriate
+
+---
+
+**End of Prompt - This should create a complete flight search application matching the \"Voos Baratos SP\" specifications.**"
+Observation: Create successful: /app/JULES_PROMPT.md
