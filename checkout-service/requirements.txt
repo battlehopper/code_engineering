@@ -1,0 +1,10 @@
+Flask
+requests
+prometheus_flask_exporter
+
+# OpenTelemetry
+opentelemetry-distro
+opentelemetry-instrumentation-flask
+opentelemetry-instrumentation-requests
+opentelemetry-exporter-otlp
+flake8

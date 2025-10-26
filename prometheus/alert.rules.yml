@@ -1,0 +1,15 @@
+groups:
+  - name: ApplicationAlerts
+    rules:
+      - alert: HighErrorRatePaymentService
+        expr: |
+          sum(rate(flask_http_requests_total{job="microservices", path="/process-payment", status="500"}[1m]))
+          /
+          sum(rate(flask_http_requests_total{job="microservices", path="/process-payment"}[1m]))
+          > 0.25
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected in Payment Service"
+          description: "The payment service is returning HTTP 500 errors for more than 25% of requests over the last minute."

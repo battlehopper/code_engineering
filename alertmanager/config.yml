@@ -1,0 +1,9 @@
+route:
+  receiver: 'webhook_receiver'
+  group_by: ['alertname']
+
+receivers:
+  - name: 'webhook_receiver'
+    webhook_configs:
+      - url: 'http://payment-service:5002/chaos/toggle'
+        send_resolved: false # Don't send a notification when the alert is resolved
