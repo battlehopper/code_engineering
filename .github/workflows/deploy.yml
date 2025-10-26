@@ -1,0 +1,125 @@
+name: Deploy Flight Application to Azure
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  # === Altere estes valores para corresponder aos seus recursos da Azure ===
+  RESOURCE_GROUP: "flight-app-rg"
+  ACR_NAME: "<ACR_NAME>" # Nome do seu Azure Container Registry
+  AKS_CLUSTER_NAME: "flight-app-aks"
+  STORAGE_ACCOUNT_NAME: "<STORAGE_ACCOUNT_NAME>" # Nome da sua Conta de Armazenamento
+  POSTGRES_SERVER_NAME: "<POSTGRES_SERVER_NAME>" # Nome do seu servidor PostgreSQL
+  POSTGRES_DB_NAME: "flights_db"
+  POSTGRES_ADMIN_USER: "pgadmin"
+
+jobs:
+  # O job de build do backend agora é o primeiro para garantir que a imagem exista
+  build-backend:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 'Az CLI login'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Generate Image Tag
+        id: tag
+        run: echo "::set-output name=tag::$(echo $GITHUB_SHA | cut -c1-7)"
+
+      - name: Build and Push Backend Image
+        working-directory: ./backend
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/flight-app-backend:${{ steps.tag.outputs.tag }} .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/flight-app-backend:${{ steps.tag.outputs.tag }}
+
+  deploy-to-aks:
+    runs-on: ubuntu-latest
+    needs: build-backend
+    outputs:
+      api_url: ${{ steps.api-url.outputs.url }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 'Az CLI login'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+          resource-group: ${{ env.RESOURCE_GROUP }}
+
+      - name: Create or Update DB Secret
+        run: |
+          DB_URL="postgresql://${{ env.POSTGRES_ADMIN_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ env.POSTGRES_SERVER_NAME }}.postgres.database.azure.com/${{ env.POSTGRES_DB_NAME }}"
+          kubectl create secret generic db-secret --from-literal=DATABASE_URL=$DB_URL --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Run DB Migrations
+        run: |
+          ACR_URL=${{ env.ACR_NAME }}.azurecr.io
+          IMAGE_TAG=${{ needs.build-backend.outputs.image_tag }}
+
+          # Substituir placeholders e aplicar o job
+          sed -i "s|<ACR_NAME>.azurecr.io/flight-app-backend:latest|$ACR_URL/flight-app-backend:$IMAGE_TAG|g" kubernetes/migration-job.yml
+          kubectl delete job backend-migration-job --ignore-not-found
+          kubectl apply -f kubernetes/migration-job.yml
+          kubectl wait --for=condition=complete job/backend-migration-job --timeout=2m
+
+      - name: Deploy Backend to AKS
+        run: |
+          ACR_URL=${{ env.ACR_NAME }}.azurecr.io
+          IMAGE_TAG=${{ needs.build-backend.outputs.image_tag }}
+
+          # Substituir placeholders e aplicar
+          sed -i "s|<ACR_NAME>.azurecr.io/flight-app-backend:latest|$ACR_URL/flight-app-backend:$IMAGE_TAG|g" kubernetes/deployment.yml
+          kubectl apply -f kubernetes/deployment.yml
+          kubectl apply -f kubernetes/service.yml
+          kubectl apply -f kubernetes/ingress.yml
+
+      - name: Get Backend API URL
+        id: api-url
+        run: |
+          sleep 30 # Aguardar o Ingress Controller atribuir o endereço
+          INGRESS_HOST=$(kubectl get ingress backend-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "::set-output name=url::http://$INGRESS_HOST"
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    needs: deploy-to-aks
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 'Az CLI login'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm install
+          # Define a URL da API para o build do React, vinda do job do AKS
+          REACT_APP_API_URL=${{ needs.deploy-to-aks.outputs.api_url }} npm run build
+
+      - name: Upload to Azure Storage
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az storage blob upload-batch \
+              --account-name ${{ env.STORAGE_ACCOUNT_NAME }} \
+              --source ./frontend/build \
+              --destination '$web' \
+              --overwrite

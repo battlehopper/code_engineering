@@ -1,28 +1,34 @@
-# Guia de Provisionamento de Infraestrutura na Azure
+# Guia de Provisionamento da Infraestrutura na Azure para a Aplicação de Voos
 
-Este guia contém os comandos da Azure CLI necessários para criar a infraestrutura base para o deploy da nossa aplicação no Azure Kubernetes Service (AKS).
+Este guia contém os comandos da Azure CLI para criar a infraestrutura completa para hospedar a aplicação de voos na Azure.
 
 Execute estes comandos no seu terminal com a [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) instalada e logada na sua conta, ou utilize o [Azure Cloud Shell](https://shell.azure.com/).
 
 ---
 
-### Passo 1: Definir Variáveis
+### Passo 1: Definir Variáveis e Criar Senha
 
-Para facilitar, vamos definir algumas variáveis. Escolha nomes únicos para seus recursos e uma localização (região) da Azure.
+Defina as variáveis para os nomes dos seus recursos. Escolha nomes únicos onde for indicado.
 
 ```bash
 # Substitua os valores abaixo pelos de sua preferência
-RESOURCE_GROUP="<MyResourceGroup>"
-ACR_NAME="<MyUniqueContainerRegistryName>"
-AKS_NAME="<MyAKSClusterName>"
-LOCATION="<EastUS>" # Ex: EastUS, WestEurope, BrazilSouth
+export RESOURCE_GROUP="flight-app-rg"
+export LOCATION="eastus" # Escolha a região da Azure mais próxima de você
+export ACR_NAME="flightappacr$(openssl rand -hex 4)" # Nome único para o Container Registry
+export AKS_NAME="flight-app-aks"
+export POSTGRES_SERVER_NAME="flight-app-pg-server-$(openssl rand -hex 4)" # Nome único para o servidor PostgreSQL
+export POSTGRES_DB_NAME="flights_db"
+export POSTGRES_ADMIN_USER="pgadmin"
+export STORAGE_ACCOUNT_NAME="flightappfrontend$(openssl rand -hex 4)" # Nome único para a conta de armazenamento
+
+# CRIE UMA SENHA SEGURA para o banco de dados e guarde-a.
+# O pipeline de CI/CD precisará dela mais tarde.
+export POSTGRES_ADMIN_PASSWORD="<YourSecurePassword>"
 ```
 
 ---
 
-### Passo 2: Criar o Grupo de Recursos (Resource Group)
-
-Um grupo de recursos é um contêiner lógico para agrupar os recursos da Azure.
+### Passo 2: Criar o Grupo de Recursos
 
 ```bash
 az group create --name $RESOURCE_GROUP --location $LOCATION
@@ -30,25 +36,35 @@ az group create --name $RESOURCE_GROUP --location $LOCATION
 
 ---
 
-### Passo 3: Criar o Azure Container Registry (ACR)
+### Passo 3: Criar o Banco de Dados (Azure Database for PostgreSQL)
 
-O ACR é um registro Docker privado onde armazenaremos as imagens dos nossos microsserviços.
+```bash
+az postgres flexible-server create \
+    --resource-group $RESOURCE_GROUP \
+    --name $POSTGRES_SERVER_NAME \
+    --location $LOCATION \
+    --admin-user $POSTGRES_ADMIN_USER \
+    --admin-password "$POSTGRES_ADMIN_PASSWORD" \
+    --sku-name Standard_B1ms --tier Burstable --version 13 --storage-size 32 \
+    --public-access 0.0.0.0
+```
+
+---
+
+### Passo 4: Criar o Azure Container Registry (ACR)
 
 ```bash
 az acr create \
     --resource-group $RESOURCE_GROUP \
     --name $ACR_NAME \
-    --sku Basic \
-    --admin-enabled true
+    --sku Basic
 ```
 
 ---
 
-### Passo 4: Criar o Cluster do Azure Kubernetes Service (AKS)
+### Passo 5: Criar o Cluster do Azure Kubernetes Service (AKS)
 
-Agora, vamos criar o cluster Kubernetes. Este comando provisiona um cluster com um pool de nós Linux, habilitado para se conectar ao ACR que criamos.
-
-**Atenção:** A criação do cluster pode levar vários minutos (10-15 min).
+**A criação pode levar de 10 a 15 minutos.**
 
 ```bash
 az aks create \
@@ -58,40 +74,47 @@ az aks create \
     --generate-ssh-keys \
     --attach-acr $ACR_NAME
 ```
-O argumento `--attach-acr $ACR_NAME` cuida automaticamente de conceder as permissões necessárias para que o cluster AKS possa baixar imagens do seu ACR.
 
 ---
 
-### Passo 5: Conectar `kubectl` ao seu Cluster AKS
+### Passo 6: Habilitar o Ingress Controller no AKS
 
-Após a criação do cluster, você precisa configurar sua ferramenta de linha de comando do Kubernetes (`kubectl`) para se conectar a ele.
-
-```bash
-az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_NAME
-```
-
----
-
-### Passo 6: Verificar a Conexão
-
-Verifique se `kubectl` está conectado corretamente ao seu novo cluster.
-
-```bash
-kubectl get nodes
-```
-
-Você deverá ver o nó (ou nós) do seu cluster AKS com o status `Ready`.
-
----
-
-Com estes passos, sua infraestrutura na Azure está pronta para receber a aplicação.
-
----
-
-### Passo Opcional, mas Recomendado: Habilitar o Ingress Controller
-
-Para expor nossa aplicação à internet via um Ingress, você precisa habilitar o addon de *HTTP application routing* ou instalar um Ingress Controller como o NGINX. O addon é mais simples para começar.
+Para que o `Ingress` funcione e exponha nossa API, precisamos habilitar o addon de roteamento de aplicação HTTP.
 
 ```bash
 az aks enable-addons --resource-group $RESOURCE_GROUP --name $AKS_NAME --addon http_application_routing
 ```
+
+---
+
+### Passo 7: Criar a Conta de Armazenamento para o Frontend
+
+```bash
+# Criar a conta de armazenamento
+az storage account create \
+    --name $STORAGE_ACCOUNT_NAME \
+    --resource-group $RESOURCE_GROUP \
+    --location $LOCATION \
+    --sku Standard_LRS \
+    --kind StorageV2
+
+# Habilitar o modo de site estático
+az storage blob service-properties update \
+    --account-name $STORAGE_ACCOUNT_NAME \
+    --static-website \
+    --404-document index.html \
+    --index-document index.html
+```
+
+---
+
+### Passo 8: Conectar `kubectl` ao seu Cluster
+
+```bash
+az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_NAME
+```
+Verifique a conexão: `kubectl get nodes`
+
+---
+
+Sua infraestrutura na Azure está provisionada.

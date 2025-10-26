@@ -1,8 +1,0 @@
-Flask
-prometheus_flask_exporter
-
-# OpenTelemetry
-opentelemetry-distro
-opentelemetry-instrumentation-flask
-opentelemetry-exporter-otlp
-flake8

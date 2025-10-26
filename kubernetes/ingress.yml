@@ -1,17 +1,17 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: api-ingress
+  name: backend-ingress
   annotations:
     kubernetes.io/ingress.class: addon-http-application-routing
 spec:
   rules:
   - http:
       paths:
-      - path: /
+      - path: /api
         pathType: Prefix
         backend:
           service:
-            name: checkout-service
+            name: backend-service
             port:
-              number: 5003
+              number: 80
