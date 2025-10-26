@@ -103,6 +103,22 @@ Execute o comando de checkout novamente, e ele voltará a funcionar instantaneam
 
 ---
 
-## CI/CD
+## Deploy no Azure Kubernetes Service (AKS)
 
-Este projeto inclui um pipeline de CI básico configurado com GitHub Actions (`.github/workflows/ci.yml`). A cada push, ele executa um linter (`flake8`) e valida a construção das imagens Docker.
+Além da execução local com Docker Compose, este projeto está configurado para ser implantado em um cluster Kubernetes na Azure (AKS) com um pipeline de CI/CD automatizado usando GitHub Actions.
+
+O processo de deploy está dividido em três etapas principais:
+
+1.  **Provisionamento da Infraestrutura na Azure:**
+    Crie os recursos necessários (AKS, ACR, etc.) na sua conta da Azure seguindo as instruções em:
+    **[-> Guia de Provisionamento da Infraestrutura na Azure (AZURE_SETUP.md)](AZURE_SETUP.md)**
+
+2.  **Deploy da Stack de Observabilidade:**
+    Instale a stack completa de observabilidade (Prometheus, Grafana, Loki, Tempo) no seu cluster AKS usando Helm, seguindo as instruções em:
+    **[-> Guia de Instalação da Stack de Observabilidade com Helm (HELM_SETUP.md)](HELM_SETUP.md)**
+
+3.  **Configuração do Pipeline de CI/CD:**
+    Configure as credenciais seguras no seu repositório do GitHub para permitir que o pipeline de CI/CD faça o deploy automático na sua conta da Azure. As instruções estão em:
+    **[-> Guia de Configuração dos Segredos do GitHub (GITHUB_SECRETS_SETUP.md)](GITHUB_SECRETS_SETUP.md)**
+
+Após completar estes três guias, cada `push` para a branch `main` irá automaticamente construir, testar e implantar a versão mais recente da aplicação no seu cluster Kubernetes.
