@@ -1,79 +1,72 @@
-# Guia de Instalação da Stack de Observabilidade com Helm
+# Guia de Instalação do Grafana Agent no Kubernetes com Helm
 
-Este guia contém os comandos para instalar Prometheus, Grafana, Loki e Tempo no seu cluster AKS usando o Helm.
+Este guia contém os comandos para instalar o **Grafana Agent** no seu cluster AKS. O agente irá coletar métricas, logs e traces e enviá-los para a sua conta do Grafana Cloud.
 
 **Pré-requisito:** Você precisa ter o [Helm](https://helm.sh/docs/intro/install/) instalado no seu terminal.
 
 ---
 
-### Passo 1: Adicionar os Repositórios de Charts do Helm
-
-Primeiro, vamos adicionar os repositórios que contêm os "pacotes" (charts) que precisamos.
+### Passo 1: Adicionar o Repositório de Charts do Grafana
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 ```
 
 ---
 
-### Passo 2: Instalar o kube-prometheus-stack
+### Passo 2: Preparar as Credenciais do Grafana Cloud
 
-Este chart é a maneira mais fácil de instalar o Prometheus e o Grafana de forma integrada. Ele já vem com dashboards e regras de alerta pré-configurados para monitorar o próprio cluster Kubernetes.
+Você precisará das mesmas credenciais que usou para o ambiente local. Tenha em mãos:
+-   A URL de Remote Write do seu Prometheus.
+-   O User ID do seu Prometheus.
+-   A URL do seu Loki.
+-   O User ID do seu Loki.
+-   A URL do seu Tempo.
+-   O User ID do seu Tempo.
+-   Sua chave de API do Grafana Cloud.
 
-Vamos instalá-lo usando o arquivo `prometheus-helm-values.yml` que criamos para que ele também colete métricas dos nossos serviços.
+---
+
+### Passo 3: Instalar o Helm Chart do Grafana Agent
+
+Vamos instalar o chart usando o comando `helm install`. Usaremos várias flags `--set` para injetar suas credenciais e endpoints diretamente no comando. O Helm irá criar um `Secret` do Kubernetes para armazená-las de forma segura.
+
+**Copie o comando abaixo para um editor de texto e substitua todos os placeholders `<...>` pelos seus valores reais.**
 
 ```bash
-# Criar um namespace para a stack de monitoramento
-kubectl create namespace monitoring
+# Crie um namespace para o agente
+kubectl create namespace grafana-agent
 
-# Instalar o chart no namespace 'monitoring'
-helm install prometheus-stack prometheus-community/kube-prometheus-stack \
-    --namespace monitoring \
-    -f prometheus-helm-values.yml
+# Comando de instalação do Helm
+helm install grafana-agent grafana/grafana-agent \
+--namespace grafana-agent \
+--set controller.replicas=1 \
+--set agent.mounts.dockerSock=true \
+--set logs.configs[0].scrapeConfigs[0].docker_sd_configs[0].host="unix:///var/run/docker.sock" \
+--set metrics.prometheus.remote_write[0].url=<GCLOUD_PROMETHEUS_REMOTE_WRITE_URL> \
+--set metrics.prometheus.remote_write[0].basic_auth.username=<GCLOUD_PROMETHEUS_USER> \
+--set 'metrics.prometheus.remote_write[0].basic_auth.password'=<GCLOUD_API_KEY> \
+--set logs.loki.url=<GCLOUD_LOKI_URL> \
+--set logs.loki.basic_auth.username=<GCLOUD_LOKI_USER> \
+--set 'logs.loki.basic_auth.password'=<GCLOUD_API_KEY> \
+--set traces.tempo.remote_write.endpoint=<GCLOUD_TEMPO_URL> \
+--set traces.tempo.remote_write.basic_auth.username=<GCLOUD_TEMPO_USER> \
+--set 'traces.tempo.remote_write.basic_auth.password'=<GCLOUD_API_KEY>
 ```
 
 ---
 
-### Passo 3: Instalar o Loki e o Promtail (loki-stack)
+### Passo 4: Verificar a Instalação
 
-Este chart irá instalar o Loki (servidor de logs) e o Promtail (agente de coleta de logs) em todos os nós do seu cluster.
-
-```bash
-helm install loki grafana/loki-stack \
-    --namespace monitoring
-```
-
----
-
-### Passo 4: Instalar o Tempo
-
-Finalmente, vamos instalar o Tempo para o tracing distribuído.
+Após alguns minutos, verifique se os pods do Grafana Agent estão rodando no namespace `grafana-agent`:
 
 ```bash
-helm install tempo grafana/tempo \
-    --namespace monitoring
+kubectl get pods -n grafana-agent
 ```
 
----
-
-### Passo 5: Acessar o Grafana
-
-Após alguns minutos, todos os componentes estarão rodando. O Grafana instalado por este chart não é exposto publicamente por padrão. Use o port-forward do `kubectl` para acessá-lo:
-
-1.  **Encontre a senha do Grafana:**
-    ```bash
-    kubectl get secret --namespace monitoring prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
-    ```
-
-2.  **Abra o port-forward em um novo terminal:**
-    ```bash
-    kubectl port-forward --namespace monitoring svc/prometheus-stack-grafana 3000:80
-    ```
-
-3.  **Acesse o Grafana:** Abra `http://localhost:3000` no seu navegador. Use o usuário `admin` e a senha obtida no passo 1. As fontes de dados para Prometheus, Loki e Tempo já estarão configuradas!
+Você deverá ver pods como `grafana-agent-*` e `grafana-agent-logs-*` com o status `Running`.
 
 ---
 
-Com estes passos, sua stack de observabilidade estará rodando e coletando dados do seu cluster e dos seus microsserviços assim que eles forem implantados.
+Com este passo, seu cluster Kubernetes agora está enviando toda a telemetria (métricas do cluster, logs dos pods, etc.) para o Grafana Cloud. A única coisa que falta é garantir que os traces da *nossa aplicação* sejam enviados para o agente. Faremos isso na próxima etapa.

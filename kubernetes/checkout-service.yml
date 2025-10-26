@@ -22,6 +22,10 @@ spec:
           value: "http://product-service:5001"
         - name: PAYMENT_SERVICE_URL
           value: "http://payment-service:5002"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://grafana-agent-traces.grafana-agent.svc.cluster.local:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "checkout-service"
 ---
 apiVersion: v1
 kind: Service

@@ -17,6 +17,11 @@ spec:
         image: <ACR_NAME>.azurecr.io/payment-service:latest # Placeholder para a imagem
         ports:
         - containerPort: 5002
+        env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://grafana-agent-traces.grafana-agent.svc.cluster.local:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "payment-service"
 ---
 apiVersion: v1
 kind: Service

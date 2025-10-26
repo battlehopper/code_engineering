@@ -11,10 +11,11 @@ services:
     ports:
       - "5001:5001"
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      # Traces will be sent to the Grafana Agent
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://grafana-agent:4317
       - OTEL_SERVICE_NAME=product-service
     depends_on:
-      - tempo
+      - grafana-agent
     networks:
       - monitoring
 
@@ -23,10 +24,10 @@ services:
     ports:
       - "5002:5002"
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://grafana-agent:4317
       - OTEL_SERVICE_NAME=payment-service
     depends_on:
-      - tempo
+      - grafana-agent
     networks:
       - monitoring
 
@@ -37,74 +38,27 @@ services:
     environment:
       - PRODUCT_SERVICE_URL=http://product-service:5001
       - PAYMENT_SERVICE_URL=http://payment-service:5002
-      # OpenTelemetry Configuration
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://grafana-agent:4317
       - OTEL_SERVICE_NAME=checkout-service
     depends_on:
       - product-service
       - payment-service
-      - tempo
+      - grafana-agent
     networks:
       - monitoring
 
-  # Observability Stack
-  prometheus:
-    image: prom/prometheus:latest
+  # Grafana Agent for collecting and forwarding telemetry
+  grafana-agent:
+    image: grafana/agent:latest
     volumes:
-      - ./prometheus/:/etc/prometheus/
+      - ./agent:/etc/agent # Mount the config directory
+      - /var/run/docker.sock:/var/run/docker.sock # Required for log collection
+    ports:
+      - "4317:4317"  # OTLP endpoint
+    # Pass environment variables from a .env file for security
+    env_file: .env
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-    ports:
-      - "9090:9090"
-    networks:
-      - monitoring
-
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"
-    networks:
-      - monitoring
-
-  tempo:
-    image: grafana/tempo:latest
-    ports:
-      - "4317:4317"
-    networks:
-      - monitoring
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana/provisioning/:/etc/grafana/provisioning/
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_PROVISIONING_DATASOURCES_PATH=/etc/grafana/provisioning/datasources
-    depends_on:
-      - prometheus
-      - loki
-      - tempo
-    networks:
-      - monitoring
-
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./promtail/config.yml:/etc/promtail/config.yml
-    command: -config.file=/etc/promtail/config.yml
-    networks:
-      - monitoring
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    ports:
-      - "9093:9093"
-    volumes:
-      - ./alertmanager/:/config/
-    command:
-      - '--config.file=/config/config.yml'
+      - "-config.file=/etc/agent/agent.yaml"
+      - "-config.expand-env" # Enables the use of ${...} variables in the config
     networks:
       - monitoring
